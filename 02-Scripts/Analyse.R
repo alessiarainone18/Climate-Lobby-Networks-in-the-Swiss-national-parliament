@@ -1,80 +1,132 @@
 # Analyse
+library(tidyverse)
+library(readxl)
+library(lubridate) 
+library(igraph)
+library(dplyr)
+library(purrr)
+library(tidyr)
+library(car)
+library(statnet) 
 
-# Lese beide Dateien
 gemeinsame_vorstoesse <- read_csv("01-Data/gemeinsame_vorstoesse.csv")
-gemeinsame_interessen <- read_csv("01-Data/gemeinsame_interessen.csv")
 
-# Vereinheitliche Spaltennamen
-df_all <- full_join(
-  gemeinsame_vorstoesse %>% rename(n_vorstoesse = gemeinsame_postulate),
-  gemeinsame_interessen %>% rename(n_interessen = gemeinsame_interessenbindungen),
-  by = c("id1", "id2")
-)
+# Hilfsfunktion zum Sortieren von ID-Paaren
+sort_ids <- function(df) {
+  df %>%
+    mutate(
+      id_min = pmin(id1, id2),
+      id_max = pmax(id1, id2)
+    ) %>%
+    select(-id1, -id2) %>%                # Alte id1 und id2 entfernen
+    rename(id1 = id_min, id2 = id_max) %>%  # Neue id1 und id2 setzen
+    select(id1, id2, everything()) %>%
+    distinct()
+}
 
-# NAs ersetzen durch 0 (keine gemeinsamen Postulate/Interessen)
-df_all <- df_all %>%
+# Einlesen & Sortieren
+gemeinsame_vorstoesse <- read_csv("01-Data/gemeinsame_vorstoesse.csv") %>%
+  rename(gemeinsame_vorstoesse = gemeinsame_postulate) %>%
+  sort_ids()
+
+gemeinsame_organisationen <- read_csv("01-Data/gemeinsame_organisationen.csv") %>% sort_ids()
+gemeinsame_hauptinteressen <- read_csv("01-Data/gemeinsame_hauptinteressen.csv") %>% sort_ids()
+gemeinsame_subinteressen <- read_csv("01-Data/gemeinsame_subinteressen.csv") %>% sort_ids()
+gleiche_partei <- read_csv("01-Data/gleiche_partei.csv") %>% sort_ids()
+gemeinsame_kommissionen <- read_csv("01-Data/gemeinsame_kommissionen.csv") %>% sort_ids()
+
+### 3. Alle Ebenen zusammenführen ----
+
+# Alle ID-Kombinationen aus den vier Dateien
+all_pairs <- bind_rows(
+  gemeinsame_vorstoesse %>% select(id1, id2),
+  gemeinsame_organisationen %>% select(id1, id2),
+  gleiche_partei %>% select(id1, id2),
+  gemeinsame_kommissionen %>% select(id1, id2),
+  gemeinsame_hauptinteressen %>% select(id1, id2),
+  gemeinsame_subinteressen %>% select(id1, id2)
+) %>%
+  distinct()
+
+
+# Jetzt alle Daten joinen
+df_all <- all_pairs %>%
+  left_join(gemeinsame_vorstoesse %>% rename(n_vorstoesse = gemeinsame_vorstoesse), by = c("id1", "id2")) %>%
+  left_join(gemeinsame_organisationen %>% rename(n_organisationen = gemeinsame_organisationen), by = c("id1", "id2")) %>%
+  left_join(gemeinsame_hauptinteressen %>% rename(n_hauptinteressen = gemeinsame_hauptinteressen), by = c("id1", "id2")) %>%
+  left_join(gemeinsame_subinteressen %>% rename(n_subinteressen = gemeinsame_subinteressen), by = c("id1", "id2")) %>%
+  left_join(gleiche_partei, by = c("id1", "id2")) %>%
+  left_join(gemeinsame_kommissionen %>% rename(n_kommissionen = n_gemeinsame_kommissionen), by = c("id1", "id2")) %>%
   mutate(
     n_vorstoesse = replace_na(n_vorstoesse, 0),
-    n_interessen = replace_na(n_interessen, 0)
+    n_organisationen = replace_na(n_organisationen, 0),
+    n_hauptinteressen = replace_na(n_hauptinteressen, 0),
+    n_subinteressen = replace_na(n_subinteressen, 0),
+    gleiche_partei = replace_na(gleiche_partei, 0)
   )
 
+write_csv(df_all, "01-Data/alle_beziehungen.csv")
 
-# Poisson-Regression: Modellierung der Anzahl gemeinsamer Postulate
-model <- glm(n_vorstoesse ~ n_interessen, family = poisson(link = "log"), data = df_all)
+## 1 Homophilie
+# H1_A: Ähnliche Interessensvertretungen führen zu höherer Wahrscheinlichkeit zu Koopeartion, kontrolliert für Partei, Kommission und Sprache.
+model_1a <- glm(n_vorstoesse ~ n_subinteressen, family = poisson(link = "log"), data = df_all)
+summary(model_1a)
+exp(coef(model_1a)["n_subinteressen"])
 
-summary(model)
-exp(coef(model)["n_interessen"])
-# 22 % mehr gemeinsame Postulate pro zusätzlicher Interessenteilung
+model_1b <- glm(n_vorstoesse ~  n_subinteressen + gleiche_partei + n_kommissionen, family = poisson(link = "log"), data = df_all)
+summary(model_1b)
+
+
+# H1_B: Kumulativer Homophilie Effekt: Je mehr Gemeinsamkeiten, desto höher die WAhrscheinlichkeit der Koopeartion.
+df_all$gleiche_kommission <- ifelse(df_all$n_kommissionen >= 1, 1, 0)
+df_all$gleiches_subinteresse <- ifelse(df_all$n_subinteressen >= 1, 1, 0)
+df_all$homophilie_count <- df_all$gleiche_partei + df_all$gleiche_kommission + df_all$gleiches_subinteresse
+model_1c <- glm(n_vorstoesse ~ homophilie_count, family = poisson(link = "log"), data = df_all)
+summary(model_1c)
+exp(coef(model_1c)["homophilie_count"])
+
+## H2 Principal Agent Theorie
+# H2_A: Bei spezifischer Organisation, höhere Kooperation
+cor(df_all$n_subinteressen, df_all$n_organisationen, use = "complete.obs")
+
+model_2a <- glm(n_vorstoesse ~ n_organisationen + gleiche_partei + n_kommissionen, family = poisson(link = "log"), data = df_all)
+summary(model_2a)
+exp(coef(model_2a)["n_organisationen"])
+
+
+# H2_B: Wenn sie mehrere gemeinsame Organisationen vertreten, ist die Kooperation noch stärker.
+df_all <- df_all %>%
+  mutate(
+    anzahl_gemeinsame_organisationen = n_organisationen,  # falls noch nicht vorhanden
+    organisationen_kat = case_when(
+      anzahl_gemeinsame_organisationen == 0 ~ "keine",
+      anzahl_gemeinsame_organisationen == 1 ~ "eine",
+      anzahl_gemeinsame_organisationen > 1  ~ "mehrere",
+      TRUE ~ NA_character_
+    ),
+    organisationen_kat = factor(organisationen_kat, levels = c("keine", "eine", "mehrere"))
+  )
+model_2b <- glm(n_vorstoesse ~ organisationen_kat + gleiche_partei + n_kommissionen,
+  data = df_all,
+  family = poisson(link = "log"))
+summary(model_2b)
+
+linearHypothesis(model_2b, "organisationen_katmehrere - organisationen_kateine = 0")
+
+# H3_A: Die Erklärungskraft des Principal-Agent-Ansatzes und der Homophilie unterscheidet sich hinsichtlich ihrer Wirkung auf politische Kooperation.
+model_3a <- glm(n_vorstoesse ~ n_organisationen + homophilie_count,
+                data = df_all,
+                family = poisson(link = "log"))
+summary(model_3a)
+
+linearHypothesis(model_3a, "n_organisationen - homophilie_count = 0")
+
+# H3_B: Es besteht eine Wechselwirkung zwischen Homophilie und Principal-Agent-Verbindungen bei der Erklärung politischer Kooperation.
+model_3b <- glm(n_vorstoesse ~ n_organisationen * homophilie_count,
+                data = df_all,
+                family = poisson(link = "log"))
+summary(model_3b)
 
 ## Netzwerkanalyse
-library(igraph)
 
-# Daten einlesen und kombinieren
-postulate_df <- read_csv("01-Data/gemeinsame_vorstoesse.csv") %>%
-  rename(n_postulate = gemeinsame_postulate)
-
-interesse_df <- read_csv("01-Data/gemeinsame_interessen.csv") %>%
-  rename(n_interesse = gemeinsame_interessenbindungen)
-
-# Mergen
-combined_edges <- full_join(postulate_df, interesse_df, by = c("id1", "id2")) %>%
-  mutate(across(c(n_postulate, n_interesse), ~replace_na(.x, 0))) %>%
-  filter(n_postulate > 0 | n_interesse > 0)
-
-# Netzwerkgraf
-g_multi <- graph_from_data_frame(combined_edges, directed = FALSE)
-
-# Kantenattribute setzen
-E(g_multi)$postulate <- combined_edges$n_postulate
-E(g_multi)$interesse <- combined_edges$n_interesse
-E(g_multi)$multiplex_type <- case_when(
-  combined_edges$n_postulate > 0 & combined_edges$n_interesse > 0 ~ "beides",
-  combined_edges$n_postulate > 0 ~ "nur_postulat",
-  combined_edges$n_interesse > 0 ~ "nur_interesse"
-)
-
-# Farben je nach Typ
-edge_colors <- case_when(
-  E(g_multi)$multiplex_type == "beides" ~ "purple",
-  E(g_multi)$multiplex_type == "nur_postulat" ~ "blue",
-  E(g_multi)$multiplex_type == "nur_interesse" ~ "red"
-)
-
-plot(g_multi,
-     vertex.size = 5,
-     vertex.label = NA,
-     edge.color = edge_colors,
-     edge.width = 1 + log1p(E(g_multi)$postulate + E(g_multi)$interesse),
-     layout = layout_with_fr(g_multi),
-     main = "Multiplex-Netzwerk: Postulate (blau), Interessen (rot), Beides (lila)")
-
-cor(combined_edges$n_postulate, combined_edges$n_interesse, method = "spearman")
-
-# Für Postulate:
-g_post <- delete_edges(g_multi, E(g_multi)[E(g_multi)$postulate == 0])
-cl_post <- cluster_louvain(g_post)
-
-# Für Interessen:
-g_int <- delete_edges(g_multi, E(g_multi)[E(g_multi)$interesse == 0])
-cl_int <- cluster_louvain(g_int)
 
