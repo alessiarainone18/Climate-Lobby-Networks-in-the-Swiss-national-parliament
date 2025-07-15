@@ -71,10 +71,13 @@ page <- read_html(url)
 
 
 ## Load data---- 
-vorstoesse <- read_xlsx("Vorstoesse.xlsx", sheet = "LINKS")
-links <- unique(vorstoesse$URL)
+# vorstoesse <- read_xlsx("Vorstoesse.xlsx", sheet = "LINKS")
+# links <- unique(vorstoesse$URL)
 
-# links_test <- links[10:20]
+### motionen
+motionen <- read_xlsx("01-Data/Motionen.xlsx", sheet = "LINKS")
+links <- unique(motionen$URL)
+# links_test <- links[10:15]
 
 
 ### Funktion ---

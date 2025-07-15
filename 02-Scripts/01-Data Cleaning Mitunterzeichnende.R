@@ -10,14 +10,25 @@ library(tidyr)
 
 # Load datajets
 mitunterzeichende <- read.csv("01-Data/mitunterzeichende.csv")
+mitunterzechende_motionen <- read.csv("01-Data/mitunterzeichende_motionen.csv")
 vorstoesse <- read_xlsx("01-Data/Vorstoesse.xlsx")
+motionen <- read_xlsx("01-Data/Motionen.xlsx")
 
 # Merge
-merged_data <- left_join(
+merged_data_postulate_interpellation <- left_join(
   vorstoesse, 
   mitunterzeichende, 
   by = c("Link zur Geschäftsseite" = "url")
 )
+
+merged_data_motionen <- left_join(
+  motionen, 
+  mitunterzechende_motionen, 
+  by = c("Link zur Geschäftsseite" = "url")
+)
+
+merged_data <- bind_rows(merged_data_postulate_interpellation, merged_data_motionen)
+
 
 # Clean & Filter web scraped data (only from actual parliament 
 # since October 2023 and only vortoesse with at least 2 mitunterzeichner)
@@ -49,11 +60,11 @@ data_id <- read_csv("01-Data/data_id.csv")
 name_cols <- c("Urheber", paste0("unterzeichner", 1:46))
 
 # Starte mit dem Original-Datensatz
-postulate_df <- merged_data_split
+vorstoesse_df <- merged_data_split
 
 # Iteriere über alle Spalten und merge die ID
 for (col in name_cols) {
-  merged_data_split_id <- merged_data_split_id %>%
+  merged_data_split_id <- merged_data_split %>%
     left_join(
       data_id,
       by = setNames("parlamentarier_anzeige_name", col)
@@ -61,7 +72,7 @@ for (col in name_cols) {
     rename(!!paste0("id_", col) := parlamentarier_id)
 }
 
-postulate_df <- merged_data_split_id
+
 
 ## Umformen
 
@@ -121,29 +132,4 @@ pair_count_df <- pair_df %>%
   count(id1, id2, name = "gemeinsame_postulate")
 
 write_csv(pair_count_df, "01-Data/gemeinsame_vorstoesse.csv")
-
-
-# Aus der pair_count_df ein igraph-Objekt erstellen
-g <- graph_from_data_frame(pair_count_df, directed = FALSE)
-
-# Optionale: Knotennamen anschauen
-V(g)$name
-
-plot(g,
-     vertex.label.cex = 0.7,
-     vertex.size = 5,
-     edge.width = E(g)$gemeinsame_postulate,  # Dickere Kanten = mehr gemeinsame Postulate
-     main = "Netzwerk der gemeinsamen Postulate")
-
-set.seed(123)  # für Reproduzierbarkeit
-layout <- layout_with_fr(g)
-
-degree_df <- data.frame(
-  id = V(g)$name,
-  degree = degree(g),
-  strength = strength(g, weights = E(g)$gemeinsame_postulate)
-)
-
-# Top-Akteure anzeigen
-degree_df %>% arrange(desc(strength)) %>% head()
 
