@@ -9,7 +9,7 @@ interestgroups_coded <- read_xlsx("01-Data/df_merged_cleaned.xlsx", sheet = "sub
 people <- read_xlsx("01-Data/df_merged_cleaned.xlsx", sheet = "Personen")
 
 people_cleaned <- people %>%
-  select(-interessengruppe_einfluss)
+  dplyr::select(-interessengruppe_einfluss)
 
 merged_data_interests <- left_join(
   people_cleaned,
@@ -80,7 +80,7 @@ write_csv(data_id, "01-Data/data_id.csv")
 # 2. Subcode wide (optional, für spätere Analysen)
 # ---------------------------------------------
 subcode_wide <- filtered_data %>%
-  select(parlamentarier_id, Subcode) %>%
+  dplyr::select(parlamentarier_id, Subcode) %>%
   filter(!is.na(Subcode)) %>%
   distinct() %>%
   group_by(parlamentarier_id) %>%
@@ -92,7 +92,7 @@ subcode_wide <- filtered_data %>%
 # 3. Gemeinsame Organisationen
 # ---------------------------------------------
 organisation_df <- filtered_data %>%
-  select(organisation_uid, parlamentarier_id) %>%
+  dplyr::select(organisation_uid, parlamentarier_id) %>%
   filter(!is.na(organisation_uid), !is.na(parlamentarier_id)) %>%
   distinct()
 
@@ -103,13 +103,13 @@ org_ids_df <- organisation_df %>%
 
 pair_df <- org_ids_df %>%
   mutate(pairs = map(parlamentarier_ids, ~ combn(.x, 2, simplify = FALSE))) %>%
-  select(pairs) %>%
+  dplyr::select(pairs) %>%
   unnest(pairs) %>%
   mutate(
     id1 = map_chr(pairs, 1),
     id2 = map_chr(pairs, 2)
   ) %>%
-  select(id1, id2)
+  dplyr::select(id1, id2)
 
 pair_count_organisation <- pair_df %>%
   count(id1, id2, name = "gemeinsame_organisationen")
@@ -120,7 +120,7 @@ write_csv(pair_count_organisation, "01-Data/gemeinsame_organisationen.csv")
 # 3. Interessen Kategorisiert (Lobbywatch)
 # ---------------------------------------------
 interessengruppe_df <- filtered_data %>%
-  select(interessengruppe, parlamentarier_id) %>%
+  dplyr::select(interessengruppe, parlamentarier_id) %>%
   filter(!is.na(interessengruppe), !is.na(parlamentarier_id)) %>%
   distinct()
 
@@ -131,13 +131,13 @@ interessengruppe_ids_df <- interessengruppe_df %>%
 
 interessengruppe_pair_df <- interessengruppe_ids_df %>%
   mutate(pairs = map(parlamentarier_ids, ~ combn(.x, 2, simplify = FALSE))) %>%
-  select(pairs) %>%
+  dplyr::select(pairs) %>%
   unnest(pairs) %>%
   mutate(
     id1 = map_chr(pairs, 1),
     id2 = map_chr(pairs, 2)
   ) %>%
-  select(id1, id2)
+  dplyr::select(id1, id2)
 
 pair_count_interessengruppe <- interessengruppe_pair_df %>%
   count(id1, id2, name = "gemeinsame_interessen")
@@ -147,7 +147,7 @@ write_csv(pair_count_interessengruppe, "01-Data/gemeinsame_interessen.csv")
 # 4. Interessen (Subcode)
 # ---------------------------------------------
 subinteresse_df <- filtered_data %>%
-  select(Subcode, Hauptcode, parlamentarier_id) %>%
+  dplyr::select(Subcode, Hauptcode, parlamentarier_id) %>%
   filter(!is.na(Subcode), !is.na(parlamentarier_id)) %>%
   distinct()
 
@@ -162,13 +162,13 @@ subcode_ids_df <- subinteresse_df_filtered %>%
 
 subcode_pair_df <- subcode_ids_df %>%
   mutate(pairs = map(parlamentarier_ids, ~ combn(.x, 2, simplify = FALSE))) %>%
-  select(pairs) %>%
+  dplyr::select(pairs) %>%
   unnest(pairs) %>%
   mutate(
     id1 = map_chr(pairs, 1),
     id2 = map_chr(pairs, 2)
   ) %>%
-  select(id1, id2)
+  dplyr:select(id1, id2)
 
 pair_count_subcode <- subcode_pair_df %>%
   count(id1, id2, name = "gemeinsame_subinteressen")
@@ -178,7 +178,7 @@ write_csv(pair_count_subcode, "01-Data/gemeinsame_subinteressen.csv")
 # 6. Partei
 # ---------------------------------------------
 partei_df <- filtered_data %>%
-  select(parlamentarier_id, parlamentarier_partei) %>%
+  dplyr::select(parlamentarier_id, parlamentarier_partei) %>%
   distinct() %>%
   drop_na()
 
@@ -197,7 +197,7 @@ id_partei_merge <- id_combos %>%
 # Prüfen ob gleich
 id_partei_merge <- id_partei_merge %>%
   mutate(gleiche_partei = if_else(partei1 == partei2, 1, 0)) %>%
-  select(id1, id2, gleiche_partei)
+  dplyr::select(id1, id2, gleiche_partei)
 
 write_csv(id_partei_merge, "01-Data/gleiche_partei.csv")
 
@@ -206,7 +206,7 @@ write_csv(id_partei_merge, "01-Data/gleiche_partei.csv")
 # ---------------------------------------------
 # 1. ID + Kommission vorbereiten
 kommission_df <- filtered_data %>%
-  select(parlamentarier_id, parlamentarier_kommissionen) %>%
+  dplyr::select(parlamentarier_id, parlamentarier_kommissionen) %>%
   filter(!is.na(parlamentarier_kommissionen), parlamentarier_kommissionen != "") %>%
   mutate(
     parlamentarier_kommissionen = str_replace_all(parlamentarier_kommissionen, "\\s+", ""),
@@ -239,7 +239,7 @@ id_kom_merged <- id_kom_merged %>%
   mutate(
     n_gemeinsame_kommissionen = map2_int(kom1, kom2, ~ length(intersect(.x, .y)))
   ) %>%
-  select(id1, id2, n_gemeinsame_kommissionen)
+  dplyr:select(id1, id2, n_gemeinsame_kommissionen)
 
 # 6. Optional speichern
 write_csv(id_kom_merged, "01-Data/gemeinsame_kommissionen.csv")
@@ -248,7 +248,7 @@ write_csv(id_kom_merged, "01-Data/gemeinsame_kommissionen.csv")
 # ---------------------------------------------
 # 1. ID + Kanton vorbereiten
 kanton_df <- filtered_data %>%
-  select(parlamentarier_id, parlamentarier_kanton) %>%
+  dplyr::select(parlamentarier_id, parlamentarier_kanton) %>%
   distinct() %>%
   drop_na()
 
@@ -267,9 +267,63 @@ id_kanton_merge <- id_combos %>%
 # Prüfen ob gleich
 id_kanton_merge <- id_kanton_merge %>%
   mutate(gleiche_kanton = if_else(kanton1 == kanton2, 1, 0)) %>%
-  select(id1, id2, gleiche_kanton)
+  dplyr::select(id1, id2, gleiche_kanton)
 
 write_csv(id_kanton_merge, "01-Data/gleicher_kanton.csv")
 
+# 6. Sprache
+# ---------------------------------------------
+# 1. ID + Kanton vorbereiten
+sprache_df <- filtered_data %>%
+  dplyr::select(parlamentarier_id, parlamentarier_sprache) %>%
+  distinct() %>%
+  drop_na()
 
+# Erzeuge alle Kombinationen von IDs (ohne Wiederholung)
+id_combos <- t(combn(sprache_df$parlamentarier_id, 2)) %>%
+  as_tibble() %>%
+  rename(id1 = V1, id2 = V2)
 
+# kantonen für beide IDs mergen
+id_sprache_merge <- id_combos %>%
+  left_join(sprache_df, by = c("id1" = "parlamentarier_id")) %>%
+  rename(sprache1 = parlamentarier_sprache) %>%
+  left_join(sprache_df, by = c("id2" = "parlamentarier_id")) %>%
+  rename(sprache2 = parlamentarier_sprache)
+
+# Prüfen ob gleich
+id_sprache_merge <- id_sprache_merge %>%
+  mutate(gleiche_sprache = if_else(sprache1 == sprache2, 1, 0)) %>%
+  dplyr::select(id1, id2, gleiche_sprache)
+
+write_csv(id_sprache_merge, "01-Data/gleicher_sprache.csv")
+
+# 8. Geschlecht
+# ---------------------------------------------
+# 1. ID + geschlecht vorbereiten
+geschlecht_df <- filtered_data %>%
+  dplyr::select(parlamentarier_id, parlamentarier_geschlecht) %>%
+  distinct() %>%
+  drop_na()
+
+# Erzeuge alle Kombinationen von IDs (ohne Wiederholung)
+id_combos <- t(combn(geschlecht_df$parlamentarier_id, 2)) %>%
+  as_tibble() %>%
+  rename(id1 = V1, id2 = V2)
+
+# geschlechten für beide IDs mergen
+id_geschlecht_merge <- id_combos %>%
+  left_join(geschlecht_df, by = c("id1" = "parlamentarier_id")) %>%
+  rename(geschlecht1 = parlamentarier_geschlecht) %>%
+  left_join(geschlecht_df, by = c("id2" = "parlamentarier_id")) %>%
+  rename(geschlecht2 = parlamentarier_geschlecht)
+
+# Prüfen ob gleich
+id_geschlecht_merge <- id_geschlecht_merge %>%
+  mutate(gleiche_geschlecht = if_else(geschlecht1 == geschlecht2, 1, 0)) %>%
+  dplyr::select(id1, id2, gleiche_geschlecht)
+
+write_csv(id_geschlecht_merge, "01-Data/gleicher_geschlecht.csv")
+
+data <- read_csv("01-Data/df_filtered_interests.csv")
+write_xlsx(data, "01-Data/df_filtered_interests.xlsx")
